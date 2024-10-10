@@ -1,7 +1,11 @@
-import { useMemo, useState, useEffect } from "react";
+"use client";
+
+import type { SetStateAction, Dispatch } from "react";
+import { useMemo, useState } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 
 import dayjs from "@calcom/dayjs";
+import { BulkEditDefaultForEventsModal } from "@calcom/features/eventtypes/components/BulkEditDefaultForEventsModal";
 import { DateOverrideInputDialog, DateOverrideList } from "@calcom/features/schedules";
 import WebSchedule, {
   ScheduleComponent as PlatformSchedule,
@@ -92,6 +96,12 @@ type AvailabilitySettingsProps = {
   customClassNames?: CustomClassNames;
   disableEditableHeading?: boolean;
   enableOverrides?: boolean;
+  bulkUpdateModalProps?: {
+    isOpen: boolean;
+    setIsOpen: Dispatch<SetStateAction<boolean>>;
+    save: ({ eventTypeIds }: { eventTypeIds: number[] }) => void;
+    isSaving: boolean;
+  };
 };
 
 const DeleteDialogButton = ({
@@ -241,6 +251,7 @@ export function AvailabilitySettings({
   customClassNames,
   disableEditableHeading = false,
   enableOverrides = false,
+  bulkUpdateModalProps,
 }: AvailabilitySettingsProps) {
   const [openSidebar, setOpenSidebar] = useState(false);
   const { t, i18n } = useLocale();
@@ -251,20 +262,6 @@ export function AvailabilitySettings({
       schedule: schedule.availability || [],
     },
   });
-
-  useEffect(() => {
-    const subscription = form.watch(
-      (value, { name }) => {
-        if (!!name && name.split(".")[0] !== "schedule" && name !== "name")
-          handleSubmit(value as AvailabilityFormValues);
-      },
-      {
-        ...schedule,
-        schedule: schedule.availability || [],
-      }
-    );
-    return () => subscription.unsubscribe();
-  }, [form.watch]);
 
   const [Shell, Schedule, TimezoneSelect] = useMemo(() => {
     return isPlatform
@@ -316,7 +313,7 @@ export function AvailabilitySettings({
       }
       CTA={
         <div className={cn(customClassNames?.ctaClassName, "flex items-center justify-end")}>
-          <div className="sm:hover:bg-muted hidden items-center rounded-md px-2 sm:flex">
+          <div className="sm:hover:bg-muted hidden items-center rounded-md px-2 transition sm:flex">
             {!openSidebar ? (
               <>
                 <Skeleton
@@ -335,13 +332,26 @@ export function AvailabilitySettings({
                       id="hiddenSwitch"
                       disabled={isSaving || schedule.isDefault}
                       checked={value}
-                      onCheckedChange={onChange}
+                      onCheckedChange={(checked) => {
+                        onChange(checked);
+                        bulkUpdateModalProps?.setIsOpen(checked);
+                      }}
                     />
                   )}
                 />
               </>
             ) : null}
           </div>
+
+          {bulkUpdateModalProps && bulkUpdateModalProps?.isOpen && (
+            <BulkEditDefaultForEventsModal
+              isPending={bulkUpdateModalProps?.isSaving}
+              open={bulkUpdateModalProps?.isOpen}
+              setOpen={bulkUpdateModalProps.setIsOpen}
+              bulkUpdateFunction={bulkUpdateModalProps?.save}
+              description={t("default_schedules_bulk_description")}
+            />
+          )}
 
           <VerticalDivider className="hidden sm:inline" />
           <DeleteDialogButton
@@ -509,7 +519,6 @@ export function AvailabilitySettings({
                     control={form.control}
                     name="schedule"
                     userTimeFormat={timeFormat}
-                    handleSubmit={handleSubmit}
                     weekStart={
                       ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(
                         weekStart
